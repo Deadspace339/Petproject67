@@ -804,75 +804,47 @@ def build_top_allies(peers_rows):
     return allies[:ALLIES_LIMIT]
 
 
-def build_meta_guides(top_heroes, limit=5):
-    guides_catalog = [
-        {"hero_name": "shadow_fiend", "title": "SF Mid Tempo (Meta 7.39)", "author": "ImmortalFaith", "likes": 68291, "games": 402113},
-        {"hero_name": "puck", "title": "Puck Control Mid", "author": "Torte de Lini", "likes": 50128, "games": 311240},
-        {"hero_name": "mars", "title": "Mars Offlane Initiation", "author": "DATOHLEONG", "likes": 38954, "games": 210882},
-        {"hero_name": "lion", "title": "Lion Support Punish", "author": "ImmortalFaith", "likes": 47320, "games": 286411},
-        {"hero_name": "phantom_assassin", "title": "PA Carry Snowball", "author": "Torte de Lini", "likes": 56072, "games": 365902},
-        {"hero_name": "juggernaut", "title": "Juggernaut Safe Lane Core", "author": "DATOHLEONG", "likes": 44815, "games": 279540},
-        {"hero_name": "axe", "title": "Axe Blink Pressure", "author": "ImmortalFaith", "likes": 42951, "games": 244810},
-        {"hero_name": "invoker", "title": "Invoker Quas Exort", "author": "Torte de Lini", "likes": 59224, "games": 331005},
-        {"hero_name": "void_spirit", "title": "Void Spirit Burst Mid", "author": "DATOHLEONG", "likes": 36182, "games": 198744},
-        {"hero_name": "tiny", "title": "Tiny Mid Roamer", "author": "ImmortalFaith", "likes": 41274, "games": 227411},
-        {"hero_name": "terrorblade", "title": "TB Hypercarry Plan", "author": "Torte de Lini", "likes": 33419, "games": 186507},
-        {"hero_name": "hoodwink", "title": "Hoodwink Support Utility", "author": "DATOHLEONG", "likes": 30758, "games": 171320},
-    ]
+def build_meta_guides(top_heroes, most_played_heroes=None, limit=5):
+    """Рекомендации по героям, которых игрок реально играет.
 
-    blocked_authors = {"greayshark"}
-    safe_catalog = [guide for guide in guides_catalog if str(guide.get("author", "")).strip().lower() not in blocked_authors]
-    if not safe_catalog:
-        return []
+    Раньше здесь был статический каталог из двенадцати придуманных гайдов с
+    выдуманными лайками. Если ни один герой игрока в него не попадал - а это
+    обычный случай - панель показывала чужих героев. Теперь строки собираются из
+    пула самого игрока, а все числа в них настоящие: его игры и его винрейт.
+    """
+    rows = []
+    seen = set()
 
-    preferred_heroes = []
-    if isinstance(top_heroes, list):
-        preferred_heroes = [str(hero.get("hero_name") or "").strip() for hero in top_heroes if isinstance(hero, dict)]
-
-    selected = []
-    used_keys = set()
-
-    for hero_name in preferred_heroes:
-        if not hero_name:
+    # Сначала вся история, затем текущее окно: "чаще всего играет" - это про
+    # накопленную статистику, окно лишь дополняет её свежими героями.
+    for source in (most_played_heroes, top_heroes):
+        if not isinstance(source, list):
             continue
-        matching = [guide for guide in safe_catalog if guide.get("hero_name") == hero_name]
-        matching.sort(key=lambda guide: (to_int(guide.get("likes"), 0), to_int(guide.get("games"), 0)), reverse=True)
-        for guide in matching:
-            key = (guide.get("hero_name"), guide.get("title"), guide.get("author"))
-            if key in used_keys:
-                continue
-            used_keys.add(key)
-            selected.append(guide)
-            break
-        if len(selected) >= limit:
-            break
 
-    if len(selected) < limit:
-        remaining = sorted(
-            safe_catalog,
-            key=lambda guide: (to_int(guide.get("likes"), 0), to_int(guide.get("games"), 0)),
-            reverse=True,
-        )
-        for guide in remaining:
-            key = (guide.get("hero_name"), guide.get("title"), guide.get("author"))
-            if key in used_keys:
+        for hero in source:
+            if not isinstance(hero, dict):
                 continue
-            used_keys.add(key)
-            selected.append(guide)
-            if len(selected) >= limit:
-                break
 
-    return [
-        {
-            "hero_name": guide.get("hero_name", "unknown"),
-            "hero_image": hero_image_url(guide.get("hero_name", "unknown")),
-            "title": guide.get("title", "Meta Guide"),
-            "author": guide.get("author", "Unknown"),
-            "likes": to_int(guide.get("likes"), 0),
-            "games": to_int(guide.get("games"), 0),
-        }
-        for guide in selected[:limit]
-    ]
+            hero_name = str(hero.get("hero_name") or "").strip()
+            games = to_int(hero.get("games"), 0)
+            if not hero_name or hero_name == "unknown" or hero_name in seen or games <= 0:
+                continue
+
+            seen.add(hero_name)
+            role = HERO_ROLE_HINTS.get(hero_name, "")
+            rows.append(
+                {
+                    "hero_name": hero_name,
+                    "hero_image": hero_image_url(hero_name),
+                    "role": role or "Универсал",
+                    "focus": HERO_FOCUS_BY_ROLE.get(role, HERO_FOCUS_DEFAULT),
+                    "games": games,
+                    "winrate": round(to_float(hero.get("winrate"), 0.0), 1),
+                }
+            )
+
+    rows.sort(key=lambda item: (item["games"], item["winrate"]), reverse=True)
+    return rows[:limit]
 
 
 def totals_average(totals_rows, field_name):
@@ -1712,9 +1684,12 @@ async def get_player_data_from_stratz(client, player_id):
         fetch_json(client, f"{OPEN_DOTA_API}/players/{player_id}/peers", [], label="peers_stratz", max_retries=1),
     )
     activity = build_activity_heatmap(activity_matches if activity_matches else matches_raw, ACTIVITY_DAYS)
-    meta_guides = build_meta_guides(default_window["top_heroes"], limit=5)
+    meta_guides = build_meta_guides(default_window["top_heroes"], most_played_heroes, limit=5)
 
     return {
+        # Стабильный ключ профиля: ник и ранг меняются, поэтому привязывать к ним
+        # что-либо на фронтенде нельзя.
+        "account_id": to_int(player_id, 0),
         "name": steam.get("name", "Unknown"),
         "avatar": steam.get("avatar", ""),
         "rank": format_rank(rank_tier, leaderboard_rank),
@@ -1885,6 +1860,16 @@ HERO_ROLE_HINTS = {
     "techies": "Support",
     "hoodwink": "Support",
 }
+
+# На что смотреть игроку на этом герое. Используется в панели мета-гайдов.
+HERO_FOCUS_BY_ROLE = {
+    "Mid Lane": "Контроль рун и первый активный тайминг после 6-8 минуты",
+    "Safe Lane": "Фарм-паттерн и ключевой слот до драк",
+    "Off Lane": "Давление на линии, после первого предмета - инициация",
+    "Support": "Вижен и размены, тело не отдавать до кор-тайминга",
+    "Roam/Support": "Смоки и ганги, конверсия killa в объект",
+}
+HERO_FOCUS_DEFAULT = "Узкий пул и конверсия выигранных драк в объекты"
 
 
 def snapshot_has_real_data(snapshot):
@@ -3078,11 +3063,12 @@ async def get_player_data(player_id: int, stratz_only: bool = False):
             top_allies = build_top_allies(peers_raw)
             activity_matches = await fetch_year_activity_matches(client, player_id, days=ACTIVITY_DAYS)
             activity = build_activity_heatmap(activity_matches if activity_matches else matches_raw, ACTIVITY_DAYS)
-            meta_guides = build_meta_guides(default_window["top_heroes"], limit=5)
+            meta_guides = build_meta_guides(default_window["top_heroes"], most_played_heroes, limit=5)
 
             print(f"[PLAYER] Successfully prepared data for {user_data['profile'].get('personaname', 'Unknown')}")
 
             response_payload = {
+                "account_id": to_int(player_id, 0),
                 "name": user_data["profile"].get("personaname", "Unknown"),
                 "avatar": user_data["profile"].get("avatarfull", ""),
                 "rank": format_rank(rank_tier, leaderboard_rank),

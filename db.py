@@ -11,7 +11,7 @@
 
 import datetime
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from sqlalchemy import (
     BigInteger,
@@ -283,30 +283,6 @@ async def record_coach_exchange(
             await session.commit()
     except Exception as error:
         print(f"[DB] record_coach_exchange failed: {type(error).__name__}: {error}")
-
-
-async def load_coach_history(steam_id64: Optional[str], limit: int = 20) -> List[Dict[str, Any]]:
-    if not _ready or _session_factory is None or not steam_id64:
-        return []
-
-    try:
-        async with _session_factory() as session:
-            user_id = await _resolve_user_id(session, steam_id64)
-            if user_id is None:
-                return []
-
-            rows = (
-                await session.scalars(
-                    select(CoachMessage)
-                    .where(CoachMessage.user_id == user_id)
-                    .order_by(CoachMessage.created_at.desc(), CoachMessage.id.desc())
-                    .limit(limit)
-                )
-            ).all()
-            return [{"role": row.role, "content": row.content, "source": row.source} for row in reversed(rows)]
-    except Exception as error:
-        print(f"[DB] load_coach_history failed: {type(error).__name__}: {error}")
-        return []
 
 
 async def get_cached_player(account_id: int, stratz_only: bool, ttl_seconds: int) -> Optional[Dict[str, Any]]:

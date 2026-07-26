@@ -19,19 +19,24 @@
                             <div className="hero-card" key={hero.hero_name}>
                                 <img
                                     src={`https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${hero.hero_name}.png`}
-                                    alt={hero.hero_name}
+                                    alt={window.prettyHeroName(hero.hero_name)}
                                 />
                                 <div className="hero-meta">
-                                    <strong>{hero.winrate}%</strong>
-                                    <span>{hero.games} игр</span>
+                                    <strong className="hero-name-label">{window.prettyHeroName(hero.hero_name)}</strong>
+                                    <span className="hero-meta-stats">
+                                        <b className={hero.winrate >= 50 ? "wr-good" : "wr-bad"}>{hero.winrate}%</b>
+                                        <span>{hero.games} игр</span>
+                                    </span>
                                 </div>
                             </div>
                         ) : (
                             <div className="hero-card hero-card-placeholder" key={`hero-placeholder-${index}`}>
                                 <div className="hero-placeholder-thumb" />
                                 <div className="hero-meta">
-                                    <strong>-</strong>
-                                    <span>нет данных</span>
+                                    <strong className="hero-name-label">-</strong>
+                                    <span className="hero-meta-stats">
+                                        <span>нет данных</span>
+                                    </span>
                                 </div>
                             </div>
                         ),

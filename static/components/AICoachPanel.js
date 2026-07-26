@@ -4,10 +4,37 @@
     var selectedWindow = props.selectedWindow;
 
     var defaultGreeting = "\u042F AI Coach. \u041D\u0430\u0436\u043C\u0438\u0442\u0435 \u043A\u043D\u043E\u043F\u043A\u0443, \u0438 \u044F \u0434\u0430\u043C \u0441\u043E\u0432\u0435\u0442\u044B \u043F\u043E \u043C\u0430\u043A\u0440\u043E, \u043C\u0438\u043A\u0440\u043E \u0438 \u0441\u0431\u043E\u0440\u043A\u0430\u043C.";
+    var STORAGE_PREFIX = "coach_chat_v1_";
 
-    var _st2 = React.useState([{ role: "assistant", content: defaultGreeting, source: "local" }]);
-    var messages = _st2[0];
-    var setMessages = _st2[1];
+    // account_id, \u0430 \u043D\u0435 \u043D\u0438\u043A: \u043D\u0438\u043A \u0438 \u0440\u0430\u043D\u0433 \u043C\u0435\u043D\u044F\u044E\u0442\u0441\u044F, \u0438 \u043F\u0435\u0440\u0435\u043F\u0438\u0441\u043A\u0430 \u0442\u043E\u0433\u0434\u0430 \u00AB\u043F\u0435\u0440\u0435\u0435\u0437\u0436\u0430\u043B\u0430\u00BB \u0431\u044B
+    // \u043D\u0430 \u0447\u0443\u0436\u043E\u0439 \u043F\u0440\u043E\u0444\u0438\u043B\u044C \u043B\u0438\u0431\u043E \u0442\u0435\u0440\u044F\u043B\u0430\u0441\u044C \u043D\u0430 \u0441\u0432\u043E\u0451\u043C.
+    var accountId = playerData && playerData.account_id ? String(playerData.account_id) : "";
+
+    function greetingChat(id) {
+        return { accountId: id, messages: [{ role: "assistant", content: defaultGreeting, source: "local" }], actionLog: [] };
+    }
+
+    function readStoredChat(id) {
+        if (!id) return null;
+        try {
+            var raw = window.localStorage.getItem(STORAGE_PREFIX + id);
+            if (!raw) return null;
+            var parsed = JSON.parse(raw);
+            if (!parsed || !Array.isArray(parsed.messages) || parsed.messages.length === 0) return null;
+            return { accountId: id, messages: parsed.messages, actionLog: Array.isArray(parsed.actionLog) ? parsed.actionLog : [] };
+        } catch (error) {
+            return null;
+        }
+    }
+
+    // \u041F\u0435\u0440\u0435\u043F\u0438\u0441\u043A\u0430 \u0436\u0438\u0432\u0451\u0442 \u043E\u0434\u043D\u0438\u043C \u043E\u0431\u044A\u0435\u043A\u0442\u043E\u043C \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 accountId, \u043A\u043E\u0442\u043E\u0440\u043E\u043C\u0443 \u043F\u0440\u0438\u043D\u0430\u0434\u043B\u0435\u0436\u0438\u0442.
+    // \u0418\u043D\u0430\u0447\u0435 \u044D\u0444\u0444\u0435\u043A\u0442 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0438\u044F \u043F\u043E\u0441\u043B\u0435 \u0441\u043C\u0435\u043D\u044B \u043F\u0440\u043E\u0444\u0438\u043B\u044F \u0443\u0441\u043F\u0435\u0432\u0430\u043B \u0437\u0430\u043F\u0438\u0441\u0430\u0442\u044C \u0441\u0442\u0430\u0440\u044B\u0435
+    // \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u044F \u0432 \u044F\u0447\u0435\u0439\u043A\u0443 \u043D\u043E\u0432\u043E\u0433\u043E \u0430\u043A\u043A\u0430\u0443\u043D\u0442\u0430 - \u0438\u043C\u0435\u043D\u043D\u043E \u0442\u0430\u043A \u0438\u0441\u0442\u043E\u0440\u0438\u044F \u0438 \u00AB\u043F\u0440\u043E\u0442\u0435\u043A\u0430\u043B\u0430\u00BB.
+    var _chat = React.useState(greetingChat(""));
+    var chat = _chat[0];
+    var setChat = _chat[1];
+    var messages = chat.messages;
+    var actionLog = chat.actionLog;
 
     var _st3 = React.useState("");
     var inputValue = _st3[0];
@@ -17,12 +44,11 @@
     var loading = _st4[0];
     var setLoading = _st4[1];
 
-    var _st5 = React.useState([]);
-    var actionLog = _st5[0];
-    var setActionLog = _st5[1];
+    var _st6 = React.useState(false);
+    var historyOpen = _st6[0];
+    var setHistoryOpen = _st6[1];
 
     var chatFeedRef = React.useRef(null);
-    var profileKeyRef = React.useRef("");
     var hasData = Boolean(playerData && activeStats);
 
     // === Unicode decode - братский фикс ===
@@ -174,17 +200,59 @@
         if (chatFeedRef.current) chatFeedRef.current.scrollTop = chatFeedRef.current.scrollHeight;
     }, [messages, loading]);
 
+    // Смена профиля: подставляем переписку именно этого аккаунта.
     React.useEffect(function() {
-        var key = playerData && playerData.name ? playerData.name + "|" + (playerData.rank || "") : "";
-        if (!key) return;
-        if (profileKeyRef.current && profileKeyRef.current !== key) {
-            setMessages([{ role: "assistant", content: defaultGreeting, source: "local" }]);
-            setActionLog([]);
-            setInputValue("");
-            setLoading(false);
+        if (chat.accountId === accountId) return;
+        setChat(readStoredChat(accountId) || greetingChat(accountId));
+        setInputValue("");
+        setLoading(false);
+        setHistoryOpen(false);
+    }, [accountId, chat.accountId]);
+
+    // Сохраняем только когда состояние и профиль совпадают - иначе на первом
+    // кадре после переключения в ячейку нового аккаунта уехала бы чужая история.
+    React.useEffect(function() {
+        if (!chat.accountId || chat.accountId !== accountId) return;
+        try {
+            window.localStorage.setItem(
+                STORAGE_PREFIX + chat.accountId,
+                JSON.stringify({ messages: chat.messages.slice(-40), actionLog: chat.actionLog.slice(-25) })
+            );
+        } catch (error) {
+            /* приватный режим или переполненное хранилище - переписка просто не переживёт перезагрузку */
         }
-        profileKeyRef.current = key;
-    }, [playerData, defaultGreeting]);
+    }, [accountId, chat]);
+
+    function appendMessages(newMessages) {
+        setChat(function(prev) {
+            return { accountId: prev.accountId, messages: prev.messages.concat(newMessages), actionLog: prev.actionLog };
+        });
+    }
+
+    function clearChat() {
+        if (accountId) {
+            try {
+                window.localStorage.removeItem(STORAGE_PREFIX + accountId);
+            } catch (error) {
+                /* нечего чистить */
+            }
+        }
+        setChat(greetingChat(accountId));
+        setInputValue("");
+        setHistoryOpen(false);
+    }
+
+    // История запросов: последние вопросы этого аккаунта, свежие сверху, без повторов.
+    var promptHistory = [];
+    var seenPrompts = {};
+    for (var hi = actionLog.length - 1; hi >= 0; hi--) {
+        var entry = actionLog[hi];
+        var text = entry && entry.prompt_preview ? String(entry.prompt_preview) : "";
+        if (!text || seenPrompts[text]) continue;
+        seenPrompts[text] = true;
+        promptHistory.push(entry);
+        if (promptHistory.length >= 8) break;
+    }
 
     var sendPrompt = async function(prompt, options) {
         options = options || {};
@@ -194,7 +262,7 @@
         var origin = String(options.origin || (promptId ? "preset" : "user_text"));
         var resolvedId = promptId || (origin === "preset" ? inferPromptIdFromText(promptText) : "");
         if (!hasData && origin === "preset") {
-            setMessages(function(prev) { return prev.concat([{ role: "assistant", content: "\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044C.", source: "local" }]); });
+            appendMessages([{ role: "assistant", content: "\u0421\u043D\u0430\u0447\u0430\u043B\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u0435 \u043F\u0440\u043E\u0444\u0438\u043B\u044C.", source: "local" }]);
             return;
         }
         var userMsg = { role: "user", content: promptText };
@@ -204,8 +272,9 @@
         }).filter(function(m) { return m.content; });
         var nextAction = { timestamp: new Date().toISOString(), origin: origin, prompt_id: resolvedId, prompt_preview: promptText.slice(0, 120) };
         var nextLog = actionLog.concat([nextAction]).slice(-25);
-        setMessages(function(prev) { return prev.concat([userMsg]); });
-        setActionLog(nextLog);
+        setChat(function(prev) {
+            return { accountId: prev.accountId, messages: prev.messages.concat([userMsg]), actionLog: nextLog };
+        });
         setInputValue("");
         setLoading(true);
         try {
@@ -225,9 +294,9 @@
             try { data = await resp.json(); } catch(e) { data = null; }
             var answer = (data && data.answer) ? data.answer : (data && data.error) ? data.error : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u043E\u043B\u0443\u0447\u0438\u0442\u044C \u043E\u0442\u0432\u0435\u0442.";
             var source = (data && data.source) ? data.source : "local";
-            setMessages(function(prev) { return prev.concat([{ role: "assistant", content: answer, source: source }]); });
+            appendMessages([{ role: "assistant", content: answer, source: source }]);
         } catch(e) {
-            setMessages(function(prev) { return prev.concat([{ role: "assistant", content: "\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438 \u0441 AI Coach.", source: "local" }]); });
+            appendMessages([{ role: "assistant", content: "\u041E\u0448\u0438\u0431\u043A\u0430 \u0441\u0432\u044F\u0437\u0438 \u0441 AI Coach.", source: "local" }]);
         } finally {
             setLoading(false);
         }
@@ -236,10 +305,47 @@
     return React.createElement('article', { className: 'panel ai-coach-panel' },
         React.createElement('div', { className: 'panel-title-row' },
             React.createElement('h3', null, 'AI Coach'),
-            React.createElement('span', { className: 'panel-subtitle' },
-                hasData ? "\u0413\u043E\u0442\u043E\u0432 \u043A \u0430\u043D\u0430\u043B\u0438\u0437\u0443" : "\u041E\u0436\u0438\u0434\u0430\u044E \u0434\u0430\u043D\u043D\u044B\u0435"
+            React.createElement('div', { className: 'ai-toolbar' },
+                React.createElement('span', { className: 'panel-subtitle' },
+                    hasData ? "\u0413\u043E\u0442\u043E\u0432 \u043A \u0430\u043D\u0430\u043B\u0438\u0437\u0443" : "\u041E\u0436\u0438\u0434\u0430\u044E \u0434\u0430\u043D\u043D\u044B\u0435"
+                ),
+                React.createElement('button', {
+                    className: 'ai-tool-btn' + (historyOpen ? ' is-active' : ''),
+                    onClick: function() { setHistoryOpen(!historyOpen); },
+                    disabled: promptHistory.length === 0,
+                    title: promptHistory.length ? "\u0418\u0441\u0442\u043E\u0440\u0438\u044F \u0437\u0430\u043F\u0440\u043E\u0441\u043E\u0432" : "\u0417\u0430\u043F\u0440\u043E\u0441\u043E\u0432 \u0435\u0449\u0451 \u043D\u0435 \u0431\u044B\u043B\u043E"
+                }, "\u0418\u0441\u0442\u043E\u0440\u0438\u044F" + (promptHistory.length ? " (" + promptHistory.length + ")" : "")),
+                React.createElement('button', {
+                    className: 'ai-tool-btn danger',
+                    onClick: clearChat,
+                    disabled: loading || messages.length <= 1,
+                    title: "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u043F\u0435\u0440\u0435\u043F\u0438\u0441\u043A\u0443 \u0441 \u044D\u0442\u0438\u043C \u043F\u0440\u043E\u0444\u0438\u043B\u0435\u043C"
+                }, "\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C")
             )
         ),
+
+        historyOpen && promptHistory.length > 0
+            ? React.createElement('div', { className: 'ai-history' },
+                React.createElement('p', { className: 'ai-history-title' }, "\u041F\u0440\u043E\u0448\u043B\u044B\u0435 \u0437\u0430\u043F\u0440\u043E\u0441\u044B \u043F\u043E \u044D\u0442\u043E\u043C\u0443 \u043F\u0440\u043E\u0444\u0438\u043B\u044E"),
+                promptHistory.map(function(entry, index) {
+                    var when = "";
+                    try {
+                        when = new Date(entry.timestamp).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+                    } catch (error) {
+                        when = "";
+                    }
+                    return React.createElement('button', {
+                        key: 'hist-' + index,
+                        className: 'ai-history-item',
+                        disabled: loading,
+                        onClick: function() { sendPrompt(entry.prompt_preview, { promptId: entry.prompt_id, origin: "history" }); }
+                    },
+                        React.createElement('span', { className: 'ai-history-text' }, entry.prompt_preview),
+                        when ? React.createElement('span', { className: 'ai-history-time' }, when) : null
+                    );
+                })
+            )
+            : null,
         React.createElement('div', { className: 'ai-prompt-grid' },
             presetPrompts.map(function(preset) {
                 return React.createElement('button', {
