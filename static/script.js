@@ -175,6 +175,7 @@ function App() {
                     <Strip data={playerData} />
                     <Trends
                         stats={activeStats}
+                        windows={playerData ? playerData.windows : null}
                         selectedWindow={selectedWindow}
                         onWindowChange={setSelectedWindow}
                         hasWindow100={hasWindow100}

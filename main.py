@@ -876,16 +876,24 @@ def totals_average(totals_rows, field_name):
 
 
 def build_top_heroes_from_matches(matches, limit=TOP_HEROES_LIMIT):
-    hero_stats = defaultdict(lambda: {"games": 0, "wins": 0})
+    hero_stats = defaultdict(lambda: {"games": 0, "wins": 0, "kills": 0, "deaths": 0, "assists": 0, "gpm": 0, "gpm_games": 0})
 
     for match in matches:
         hero_id = match.get("hero_id")
         if hero_id is None:
             continue
 
-        hero_stats[hero_id]["games"] += 1
+        stat = hero_stats[hero_id]
+        stat["games"] += 1
         if is_match_win(match):
-            hero_stats[hero_id]["wins"] += 1
+            stat["wins"] += 1
+        stat["kills"] += to_int(match.get("kills"), 0)
+        stat["deaths"] += to_int(match.get("deaths"), 0)
+        stat["assists"] += to_int(match.get("assists"), 0)
+        gpm = to_int(match.get("gold_per_min"), 0)
+        if gpm > 0:
+            stat["gpm"] += gpm
+            stat["gpm_games"] += 1
 
     top_heroes = []
     for hero_id, stat in hero_stats.items():
@@ -894,11 +902,21 @@ def build_top_heroes_from_matches(matches, limit=TOP_HEROES_LIMIT):
         if games <= 0:
             continue
 
+        avg_deaths = stat["deaths"] / games
         top_heroes.append(
             {
                 "hero_name": hero_map.get(hero_id, "unknown"),
                 "games": games,
+                "wins": wins,
+                "losses": games - wins,
                 "winrate": round((wins / games) * 100, 1),
+                # Разбивка нужна панели трендов: по клику на герое в кольце
+                # показываются его реальные показатели, а не только винрейт.
+                "avg_kills": round(stat["kills"] / games, 1),
+                "avg_deaths": round(avg_deaths, 1),
+                "avg_assists": round(stat["assists"] / games, 1),
+                "avg_kda": round((stat["kills"] + stat["assists"]) / (avg_deaths if avg_deaths > 0 else 1), 2),
+                "avg_gpm": int(round(stat["gpm"] / stat["gpm_games"])) if stat["gpm_games"] > 0 else 0,
             }
         )
 
@@ -927,7 +945,10 @@ def compute_window_stats(matches_subset):
     avg_xpm = int(round(safe_avg(xpm_values, 2), 0)) if xpm_values else 0
 
     top_heroes = build_top_heroes_from_matches(matches_subset, TOP_HEROES_LIMIT)
-    hero_ring = [hero["hero_name"] for hero in build_top_heroes_from_matches(matches_subset, 12)]
+    # Кольцо отдаётся объектами, а не именами: панель трендов показывает по клику
+    # показатели героя, и тянуть их вторым запросом было бы незачем.
+    hero_ring = build_top_heroes_from_matches(matches_subset, 12)
+    unique_heroes = len({match.get("hero_id") for match in matches_subset if match.get("hero_id") is not None})
 
     trend_points = []
     for match in matches_subset[::-1]:
@@ -1006,12 +1027,13 @@ def compute_window_stats(matches_subset):
         "best_lane": best_lane,
         "party_rate": party_rate,
         "solo_rate": solo_rate,
+        "unique_heroes": unique_heroes,
         "radar_data": {
             "farming": min(100, int(avg_gpm / 8)) if avg_gpm > 0 else 0,
             "fighting": min(100, int((avg_kills + avg_assists) * 2)) if total > 0 else 0,
             "survivability": min(100, int(avg_kda * 15)) if total > 0 else 0,
             "experience": min(100, int(avg_xpm / 9)) if avg_xpm > 0 else 0,
-            "versatility": min(100, len({match.get("hero_id") for match in matches_subset if match.get("hero_id") is not None}) * 5),
+            "versatility": min(100, unique_heroes * 5),
         },
     }
 
