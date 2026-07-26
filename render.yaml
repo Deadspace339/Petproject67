@@ -1,4 +1,11 @@
 # Blueprint для Render. В панели: New -> Blueprint -> указать этот репозиторий.
+
+databases:
+  - name: meta-analytics-db
+    plan: free
+    databaseName: meta_analytics
+    user: meta_analytics
+
 services:
   - type: web
     name: meta-analytics
@@ -11,6 +18,13 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: "3.12.10"
+      # Строка подключения подставляется автоматически из блока databases выше.
+      # Без неё приложение возьмёт локальный SQLite, а файловая система Render
+      # стирается при каждом деплое - данные бы не сохранились.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: meta-analytics-db
+          property: connectionString
       # Render сгенерирует секрет сам, вручную вводить не нужно
       - key: SESSION_SECRET
         generateValue: true

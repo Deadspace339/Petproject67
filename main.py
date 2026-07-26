@@ -6,6 +6,7 @@ import re
 import secrets
 import urllib.parse
 from collections import defaultdict
+from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -17,7 +18,19 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-app = FastAPI()
+import db
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Отказ базы не должен мешать старту: init_db сообщает о проблеме и возвращает
+    # False, приложение продолжает работать без сохранения данных.
+    await db.init_db()
+    yield
+    await db.close_db()
+
+
+app = FastAPI(lifespan=lifespan)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
@@ -2543,9 +2556,27 @@ async def verify_steam_openid(request: Request):
         return {"ok": False}
 
 
+def session_steam_id(request: Request) -> str:
+    session_user = request.session.get("steam_user") if hasattr(request, "session") else None
+    if not isinstance(session_user, dict):
+        return ""
+    return str(session_user.get("steam_id64") or "").strip()
+
+
+async def current_steam_user(request: Request) -> Optional[Dict[str, Any]]:
+    steam_id64 = session_steam_id(request)
+    if not steam_id64:
+        return None
+
+    # Свежий профиль берём из базы; если она недоступна, показываем то, что
+    # осталось в сессии с момента входа.
+    stored = await db.get_user_by_steam_id(steam_id64)
+    return stored or request.session.get("steam_user")
+
+
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
-    steam_user = request.session.get("steam_user") if hasattr(request, "session") else None
+    steam_user = await current_steam_user(request)
     return templates.TemplateResponse(request, "home.html", {"steam_user": steam_user})
 
 
@@ -2593,12 +2624,20 @@ async def auth_steam_callback(request: Request):
     except Exception:
         pass
 
-    request.session["steam_user"] = {
-        "steam_id64": steam_id64,
-        "account_id": account_id,
-        "persona_name": persona_name or f"Steam {steam_id64}",
-        "avatar": avatar,
-    }
+    stored = await db.upsert_user(steam_id64, account_id, persona_name, avatar)
+    if stored:
+        # Профиль лежит в базе, в cookie уходит только идентификатор. Сессионная
+        # cookie подписана, но не зашифрована - её содержимое читается кем угодно,
+        # поэтому держим там минимум.
+        request.session["steam_user"] = {"steam_id64": steam_id64}
+    else:
+        # Без базы восстанавливать профиль неоткуда - оставляем его в сессии.
+        request.session["steam_user"] = {
+            "steam_id64": steam_id64,
+            "account_id": account_id,
+            "persona_name": persona_name or f"Steam {steam_id64}",
+            "avatar": avatar,
+        }
     return RedirectResponse(url="/", status_code=302)
 
 
@@ -2617,20 +2656,30 @@ async def favicon():
 @app.get("/health", include_in_schema=False)
 async def health():
     # Cheap endpoint for platform/container health checks - no templates, no APIs.
-    return {"status": "ok"}
+    # Deliberately still "ok" without a database: the dashboard works without one,
+    # so a failing database must not make the platform recycle the container.
+    return {"status": "ok", "database": db.is_ready()}
+
+
+@app.get("/api/stats")
+async def database_stats():
+    # Aggregate counts only - never rows, so this exposes no personal data.
+    return await db.get_stats()
 
 
 @app.get("/api/player/resolve")
-async def resolve_player_input(query: str = ""):
+async def resolve_player_input(request: Request, query: str = ""):
     normalized_query = str(query or "").strip()
     if not normalized_query:
         return {"error": "Введите Steam ID, ссылку профиля или ник"}
 
     print(f"[RESOLVE] Processing query: {normalized_query}")
+    steam_id64 = session_steam_id(request)
 
     direct_account_id = extract_account_id_from_input(normalized_query)
     if direct_account_id:
         print(f"[RESOLVE] Direct account ID found: {direct_account_id}")
+        await db.record_search(normalized_query, direct_account_id, "direct", steam_id64)
         return {
             "account_id": direct_account_id,
             "source": "direct",
@@ -2640,6 +2689,7 @@ async def resolve_player_input(query: str = ""):
         vanity_account_id = await resolve_steam_vanity_to_account_id(client, normalized_query)
         if vanity_account_id:
             print(f"[RESOLVE] Vanity account ID found: {vanity_account_id}")
+            await db.record_search(normalized_query, vanity_account_id, "steam_vanity", steam_id64)
             return {
                 "account_id": vanity_account_id,
                 "source": "steam_vanity",
@@ -2661,6 +2711,7 @@ async def resolve_player_input(query: str = ""):
                     continue
 
                 print(f"[RESOLVE] Found player: {match.get('personaname')} with ID: {account_id}")
+                await db.record_search(normalized_query, account_id, "search", steam_id64)
                 return {
                     "account_id": account_id,
                     "source": "search",
@@ -2674,7 +2725,7 @@ async def resolve_player_input(query: str = ""):
 
 
 @app.post("/api/coach")
-async def coach_response(payload: CoachRequest):
+async def coach_response(request: Request, payload: CoachRequest):
     prompt = str(payload.prompt or "").strip()
     snapshot = payload.snapshot if isinstance(payload.snapshot, dict) else {}
     coach_context = {
@@ -2687,15 +2738,21 @@ async def coach_response(payload: CoachRequest):
     if not prompt:
         return {"error": "Пустой запрос"}
 
+    steam_id64 = session_steam_id(request)
+    prompt_id = coach_context.get("selected_prompt_id", "")
+
     try:
         llm_result = await call_llm_coach(prompt, snapshot, coach_context=coach_context)
         if llm_result:
+            await db.record_coach_exchange(prompt, llm_result.get("answer", ""), llm_result.get("source", ""), prompt_id, steam_id64)
             return llm_result
     except Exception as error:
         print(f"[Coach endpoint fallback] {type(error).__name__}: {error}")
 
+    local_answer = build_local_coach_response(prompt, snapshot, prompt_id)
+    await db.record_coach_exchange(prompt, local_answer, "local", prompt_id, steam_id64)
     return {
-        "answer": build_local_coach_response(prompt, snapshot, coach_context.get("selected_prompt_id", "")),
+        "answer": local_answer,
         "source": "local",
     }
 
@@ -2716,6 +2773,14 @@ async def get_player_data(player_id: int, stratz_only: bool = False):
         print(f"[PLAYER] Cache hit for player_id: {player_id}")
         return json_payload_response(cached_payload)
 
+    # Второй уровень кеша: пережил перезапуск, поэтому после деплоя первый
+    # посетитель не ждёт полного обхода внешних API.
+    db_cached = await db.get_cached_player(player_id, stratz_only, CACHE_TTL)
+    if db_cached:
+        print(f"[PLAYER] DB cache hit for player_id: {player_id}")
+        store_cached_player_payload(player_id, db_cached, stratz_only=stratz_only)
+        return json_payload_response(db_cached)
+
     # Try Stratz API first if configured
     if is_stratz_configured():
         try:
@@ -2725,6 +2790,7 @@ async def get_player_data(player_id: int, stratz_only: bool = False):
                 if isinstance(stratz_data, dict) and stratz_data.get("name"):
                     print(f"[PLAYER] Stratz API succeeded for {stratz_data.get('name')}")
                     store_cached_player_payload(player_id, stratz_data, stratz_only=stratz_only)
+                    await db.store_cached_player(player_id, stratz_only, stratz_data)
                     return json_payload_response(stratz_data)
                 else:
                     error = stratz_data.get("error", "Unknown") if isinstance(stratz_data, dict) else "None"
@@ -3051,6 +3117,7 @@ async def get_player_data(player_id: int, stratz_only: bool = False):
                 "radar_data": default_window["radar_data"],
             }
             store_cached_player_payload(player_id, response_payload, stratz_only=stratz_only)
+            await db.store_cached_player(player_id, stratz_only, response_payload)
             return json_payload_response(response_payload)
         except Exception as error:
             print(f"[PLAYER] Error: {error}")
