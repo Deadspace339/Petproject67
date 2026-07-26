@@ -1681,7 +1681,10 @@ async def get_player_data_from_stratz(client, player_id):
     # the same way the activity heatmap already does.
     activity_matches, peers_raw = await asyncio.gather(
         fetch_year_activity_matches(client, player_id, days=ACTIVITY_DAYS),
-        fetch_json(client, f"{OPEN_DOTA_API}/players/{player_id}/peers", [], label="peers_stratz", max_retries=0),
+        # One retry: without it a single transient DNS/network blip silently leaves
+        # the allies panel empty, with no way for the UI to tell that apart from
+        # "this player has no recorded team-mates".
+        fetch_json(client, f"{OPEN_DOTA_API}/players/{player_id}/peers", [], label="peers_stratz", max_retries=1),
     )
     activity = build_activity_heatmap(activity_matches if activity_matches else matches_raw, ACTIVITY_DAYS)
     meta_guides = build_meta_guides(default_window["top_heroes"], limit=5)
