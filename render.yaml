@@ -1,0 +1,25 @@
+# Blueprint для Render. В панели: New -> Blueprint -> указать этот репозиторий.
+services:
+  - type: web
+    name: meta-analytics
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # --proxy-headers обязателен, иначе вход через Steam сломается за TLS-прокси
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.10"
+      # Render сгенерирует секрет сам, вручную вводить не нужно
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_HTTPS_ONLY
+        value: "true"
+      # Значения задаются в Render -> Environment, в репозиторий не попадают
+      - key: STRATZ_API_TOKEN
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash

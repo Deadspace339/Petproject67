@@ -1,0 +1,14 @@
+# Виртуальное окружение и кэш Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Секреты: реальные ключи не коммитим, шаблон лежит в .env.example
+.env
+
+# Служебное
+.claude/
+.idea/
+.vscode/
+*.bak
+*.orig

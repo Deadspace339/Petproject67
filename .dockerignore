@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+
+# Секреты передаются переменными окружения хостинга, а не файлом в образе
+.env
+
+.git/
+.gitignore
+.claude/
+.idea/
+.vscode/
+*.bak
+*.orig
+README.md

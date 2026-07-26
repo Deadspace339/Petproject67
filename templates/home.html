@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Analytics</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="home-body">
+    <main class="home-shell">
+        <header class="home-nav panel">
+            <div class="home-brand">
+                <p class="home-kicker">Платформа аналитики Dota 2 и CS2</p>
+                <h1 class="home-title">Meta<span>Analytics</span></h1>
+            </div>
+
+            <div class="home-nav-actions">
+                <a class="home-btn ghost" href="/dashboard">Открыть дашборд</a>
+                {% if steam_user %}
+                    <a class="home-btn ghost" href="/auth/logout">Выйти</a>
+                {% else %}
+                    <a class="home-btn steam" href="/auth/steam/login">Войти через Steam</a>
+                {% endif %}
+            </div>
+        </header>
+
+        {% if request.query_params.get("auth") == "failed" %}
+            <section class="home-alert panel">
+                Не удалось авторизоваться через Steam. Попробуйте еще раз.
+            </section>
+        {% endif %}
+
+        <section class="home-hero panel">
+            <div class="home-hero-left">
+                <h2 class="home-hero-title">AI-разбор матчей и персональные советы для роста в Dota 2 и CS2</h2>
+                <p class="home-hero-subtitle">
+                    Быстрый профиль игрока, история матчей, мета-рекомендации и AI Coach в одном интерфейсе.
+                    Подходит для соло-игроков, команд.
+                </p>
+
+                <div class="home-chip-row">
+                    <span class="home-chip">Тренды</span>
+                    <span class="home-chip">Топ героев</span>
+                    <span class="home-chip">Мета-гайды</span>
+                    <span class="home-chip">AI Coach</span>
+                    <span class="home-chip">CS2 модуль (в разработке)</span>
+                </div>
+
+                <div class="home-action-row">
+                    <a class="home-btn primary" href="/dashboard">Начать анализ</a>
+                    {% if not steam_user %}
+                        <a class="home-btn steam" href="/auth/steam/login">Авторизация Steam</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="home-hero-right">
+                {% if steam_user %}
+                    <article class="home-steam-card panel">
+                        <div class="home-steam-user">
+                            {% if steam_user.avatar %}
+                                <img class="home-steam-avatar" src="{{ steam_user.avatar }}" alt="{{ steam_user.persona_name }}">
+                            {% else %}
+                                <div class="home-steam-avatar home-steam-avatar-fallback">S</div>
+                            {% endif %}
+                            <div>
+                                <p class="home-steam-label">Steam подключен</p>
+                                <strong class="home-steam-name">{{ steam_user.persona_name }}</strong>
+                                <p class="home-steam-id">ID: {{ steam_user.account_id }}</p>
+                            </div>
+                        </div>
+                        <a class="home-btn primary home-steam-open" href="/dashboard">Перейти к профилю</a>
+                    </article>
+                {% else %}
+                    <article class="home-steam-card panel">
+                        <p class="home-steam-label">Авторизация</p>
+                        <strong class="home-steam-name">Подключи Steam в 1 клик</strong>
+                        <p class="home-steam-id">Сохраняй профиль и быстрее переходи к персональной аналитике.</p>
+                        <a class="home-btn steam home-steam-open" href="/auth/steam/login">Войти через Steam</a>
+                    </article>
+                {% endif %}
+
+                <article class="home-preview-card home-preview-single panel">
+                    <p>AI COACH</p>
+                    <strong>Готов к разбору</strong>
+                    <div class="home-preview-hint">Последняя игра • Макро/Микро • Билды • Подбор позиции • Рекомендации меты</div>
+                    <div class="home-preview-bar"><span style="width: 88%;"></span></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="home-about panel">
+            <div class="home-about-head">
+                <h3>О проекте</h3>
+            </div>
+
+            <div class="home-about-grid">
+                <article class="home-about-card">
+                    <strong>Что уже работает</strong>
+                    <p>Анализ матчей Dota 2, статистика по винрейту, топ-герои, союзники, тренды, экономика и AI Coach.</p>
+                </article>
+                <article class="home-about-card">
+                    <strong>Что добавляем</strong>
+                    <p>Единый модуль CS2, сравнение игровых паттернов и общая аналитика по микроконтролю и макро-решениям.</p>
+                </article>
+                <article class="home-about-card">
+                    <strong>Зачем это?</strong>
+                    <p>Наглядно показывает интеграцию LLM, реальную обработку статистики и практическую пользу для игроков.</p>
+                </article>
+            </div>
+        </section>
+
+        <section class="home-scope panel">
+            <div class="home-about-head">
+                <h3>Экосистема Meta Analytics</h3>
+                <span>Dota 2 + CS2</span>
+            </div>
+
+            <div class="home-scope-grid">
+                <article class="home-scope-card">
+                    <p>Модуль Dota 2</p>
+                    <strong>Полный матч-анализ</strong>
+                    <span>Турбо, обычный режим, рейтинговый матч,роли, экономика, тренды, мета-гайды.</span>
+                </article>
+                <article class="home-scope-card">
+                    <p>Модуль CS2</p>
+                    <strong>AI-советы по игре</strong>
+                    <span>Анализ стрельбы, позиционирования, ролей и командных решений.</span>
+                </article>
+                <article class="home-scope-card">
+                    <p>LLM-интеграция</p>
+                    <strong>Персональный коуч</strong>
+                    <span>Готовые промпты, разбор последних матчей и пошаговые рекомендации.</span>
+                </article>
+                <article class="home-scope-card">
+                    <p>Демонстрация</p>
+                    <strong>Материалы</strong>
+                    <span>Визуальный интерфейс, понятные метрики и данные для защиты проекта.</span>
+                </article>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

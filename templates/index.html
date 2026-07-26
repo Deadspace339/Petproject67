@@ -1,0 +1,44 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meta Analytics</title>
+    <link rel="stylesheet" href="/static/style.css?v=dashboard-stability-v6">
+    <script src="/static/vendor/react.production.min.js"></script>
+    <script src="/static/vendor/react-dom.production.min.js"></script>
+    <script src="/static/vendor/babel.min.js"></script>
+</head>
+<body>
+    <div id="root">
+        <div class="panel error-panel">Загрузка интерфейса Meta Analytics...</div>
+    </div>
+
+    <script type="text/babel" data-presets="env,react" src="/static/components/AppHeader.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/PlayerBanner.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/PerformanceStrip.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/OverviewCards.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/TopHeroesCard.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/MatchesTable.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/TrendsPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/MostPlayedHeroesPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/AlliesPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/ActivityPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/AICoachPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/components/MetaGuidesPanel.js?v=dashboard-stability-v6"></script>
+    <script type="text/babel" data-presets="env,react" src="/static/script.js?v=dashboard-stability-v6"></script>
+    <script>
+        window.setTimeout(function () {
+            var root = document.getElementById("root");
+            if (!root) return;
+            var hasApp = root.querySelector(".app-shell");
+            var hasKnownError = root.querySelector(".error-panel");
+            if (!hasApp && hasKnownError && root.textContent.indexOf("Загрузка интерфейса") >= 0) {
+                root.innerHTML =
+                    '<div class="panel error-panel">Интерфейс не загрузился. Обновите страницу. Если проблема повторится, перезапустите локальный сервер.</div>';
+            }
+        }, 8000);
+    </script>
+</body>
+</html>
+
