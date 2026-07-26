@@ -23,7 +23,7 @@ function MatchesTable({ matches }) {
                                 : (match.player_slot < 128 && match.radiant_win) ||
                                   (match.player_slot >= 128 && !match.radiant_win);
                         const heroName = match.hero_name || "unknown";
-                        const heroLabel = heroName.replace(/_/g, " ");
+                        const heroLabel = window.prettyHeroName(heroName);
                         const heroImage =
                             match.hero_image ||
                             `https://cdn.cloudflare.steamstatic.com/apps/dota2/images/dota_react/heroes/${heroName}.png`;

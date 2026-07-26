@@ -697,6 +697,7 @@ def build_activity_heatmap(matches, days=ACTIVITY_DAYS):
     cells = []
     months = []
     seen_month_keys = set()
+    seen_month_weeks = set()
 
     for offset in range(days):
         day = start_day + datetime.timedelta(days=offset)
@@ -718,10 +719,15 @@ def build_activity_heatmap(matches, days=ACTIVITY_DAYS):
             }
         )
 
-        if day.day == 1 or offset == 0:
+        # Подписываем только первые числа месяцев и не больше одной подписи на
+        # колонку. Раньше сюда попадал ещё и день offset == 0: неполный первый
+        # месяц и первое число следующего оказывались в одной неделе, обе подписи
+        # получали одну grid-колонку и наезжали друг на друга.
+        if day.day == 1 and week not in seen_month_weeks:
             month_key = (day.year, day.month)
             if month_key not in seen_month_keys:
                 seen_month_keys.add(month_key)
+                seen_month_weeks.add(week)
                 months.append(
                     {
                         "week": week,
@@ -805,12 +811,12 @@ def build_top_allies(peers_rows):
 
 
 def build_meta_guides(top_heroes, most_played_heroes=None, limit=5):
-    """Рекомендации по героям, которых игрок реально играет.
+    """Руководства по героям, на которых игрок реально играет.
 
     Раньше здесь был статический каталог из двенадцати придуманных гайдов с
-    выдуманными лайками. Если ни один герой игрока в него не попадал - а это
-    обычный случай - панель показывала чужих героев. Теперь строки собираются из
-    пула самого игрока, а все числа в них настоящие: его игры и его винрейт.
+    выдуманными лайками. Если ни один герой игрока в него не попадал - обычный
+    случай - панель показывала чужих героев. Теперь герои берутся из пула самого
+    игрока, а содержание руководства определяется его ролью.
     """
     rows = []
     seen = set()
@@ -832,18 +838,24 @@ def build_meta_guides(top_heroes, most_played_heroes=None, limit=5):
 
             seen.add(hero_name)
             role = HERO_ROLE_HINTS.get(hero_name, "")
+            guide = HERO_GUIDE_BY_ROLE.get(role, HERO_GUIDE_DEFAULT)
             rows.append(
                 {
                     "hero_name": hero_name,
                     "hero_image": hero_image_url(hero_name),
                     "role": role or "Универсал",
-                    "focus": HERO_FOCUS_BY_ROLE.get(role, HERO_FOCUS_DEFAULT),
-                    "games": games,
-                    "winrate": round(to_float(hero.get("winrate"), 0.0), 1),
+                    "plan": guide["plan"],
+                    "early": guide["early"],
+                    "items": guide["items"],
+                    "mistake": guide["mistake"],
+                    # Не для показа: только чтобы отсортировать пул по частоте.
+                    "_games": games,
                 }
             )
 
-    rows.sort(key=lambda item: (item["games"], item["winrate"]), reverse=True)
+    rows.sort(key=lambda item: item["_games"], reverse=True)
+    for row in rows:
+        row.pop("_games", None)
     return rows[:limit]
 
 
@@ -1169,7 +1181,10 @@ def normalize_stratz_match_row(match_node, player_node):
         "gold_per_min": to_int(player_node.get("goldPerMinute"), 0),
         "xp_per_min": to_int(player_node.get("experiencePerMinute"), 0),
         "lane_role": lane_role,
-        "party_size": None,
+        # STRATZ не отдаёт размер группы, но partyId заполнен только когда игрок
+        # играл в пати. Раньше здесь всегда стоял None, и панель соло/группа
+        # показывала 0% на любом профиле.
+        "party_size": 2 if player_node.get("partyId") is not None else 1,
         "is_victory": bool(player_node.get("isVictory")),
         "is_win": bool(player_node.get("isVictory")),
         "item_0": to_int(player_node.get("item0Id"), 0),
@@ -1332,11 +1347,10 @@ async def fetch_stratz_player_payload(client, player_id):
     variables = {
         "playerId": int(player_id),
         "take": min(RECENT_MATCHES_LIMIT, STRATZ_MAX_TAKE),
-        "heroTake": min(100, STRATZ_MAX_TAKE),
     }
 
     rich_query = """
-    query StratzPlayerCore($playerId: Long!, $take: Int!, $heroTake: Int!) {
+    query StratzPlayerCore($playerId: Long!, $take: Int!) {
       player(steamAccountId: $playerId) {
         steamAccountId
         firstMatchDate
@@ -1347,13 +1361,6 @@ async def fetch_stratz_player_payload(client, player_id):
           avatar
           seasonRank
           seasonLeaderboardRank
-        }
-        heroesSummary: matchesGroupBy(request: { take: $heroTake, playerList: SINGLE, groupBy: HERO }) {
-          ... on MatchGroupByHeroType {
-            heroId
-            matchCount
-            winCount
-          }
         }
         # No isParsed filter: it keeps only replay-parsed games, which quietly drops
         # most turbo matches from the sample and skews every window stat with it.
@@ -1369,6 +1376,7 @@ async def fetch_stratz_player_payload(client, player_id):
           players(steamAccountId: $playerId) {
             isVictory
             position
+            partyId
             kills
             deaths
             assists
@@ -1394,7 +1402,7 @@ async def fetch_stratz_player_payload(client, player_id):
         return player
 
     fallback_query = """
-    query StratzPlayerCoreFallback($playerId: Long!, $take: Int!, $heroTake: Int!) {
+    query StratzPlayerCoreFallback($playerId: Long!, $take: Int!) {
       player(steamAccountId: $playerId) {
         steamAccountId
         firstMatchDate
@@ -1406,19 +1414,13 @@ async def fetch_stratz_player_payload(client, player_id):
           seasonRank
           seasonLeaderboardRank
         }
-        heroesSummary: matchesGroupBy(request: { take: $heroTake, playerList: SINGLE, groupBy: HERO }) {
-          ... on MatchGroupByHeroType {
-            heroId
-            matchCount
-            winCount
-          }
-        }
         recentMatches: matches(request: { take: $take, playerList: SINGLE }) {
           id
           startDateTime
           durationSeconds
           players(steamAccountId: $playerId) {
             isVictory
+            partyId
             kills
             deaths
             assists
@@ -1551,17 +1553,20 @@ async def get_player_data_from_stratz(client, player_id):
     turbo_losses = max(0, turbo_total - turbo_wins)
     turbo_wr = round((turbo_wins / turbo_total) * 100, 2) if turbo_total > 0 else 0
 
-    heroes_summary = player_payload.get("heroesSummary") if isinstance(player_payload.get("heroesSummary"), list) else []
-    heroes_totals_raw = []
-    for row in heroes_summary:
-        if not isinstance(row, dict):
-            continue
-        hero_id = to_int(row.get("heroId"), 0)
-        games = to_int(row.get("matchCount"), 0)
-        wins = to_int(row.get("winCount"), 0)
-        if hero_id <= 0 or games <= 0:
-            continue
-        heroes_totals_raw.append({"hero_id": hero_id, "games": games, "win": wins})
+    # Статистика по героям за всю историю берётся у OpenDota. У STRATZ такого
+    # агрегата нет: и matchesGroupBy, и heroesPerformance трактуют take как число
+    # учитываемых МАТЧЕЙ, а не групп, поэтому "самые играемые" считались по
+    # последним ста играм, а пикрейт делился на счётчик за всю карьеру и всегда
+    # выходил 0.0-0.1%.
+    heroes_totals_raw = await fetch_json(
+        client,
+        f"{OPEN_DOTA_API}/players/{player_id}/heroes?significant=0",
+        [],
+        label="heroes_totals_stratz",
+        max_retries=1,
+    )
+    if not isinstance(heroes_totals_raw, list):
+        heroes_totals_raw = []
 
     gpm_fallback = average_positive(matches_raw, "gold_per_min")
     xpm_fallback = average_positive(matches_raw, "xp_per_min")
@@ -1859,17 +1864,107 @@ HERO_ROLE_HINTS = {
     "undying": "Support",
     "techies": "Support",
     "hoodwink": "Support",
+    # Герои с устойчивой ролью. Те, кого мета регулярно двигает между позициями
+    # (например Nature's Prophet), намеренно не перечислены - для них честнее
+    # показать общий план, чем уверенно назвать одну позицию.
+    "faceless_void": "Safe Lane",
+    "spectre": "Safe Lane",
+    "luna": "Safe Lane",
+    "medusa": "Safe Lane",
+    "lifestealer": "Safe Lane",
+    "sven": "Safe Lane",
+    "gyrocopter": "Safe Lane",
+    "drow_ranger": "Safe Lane",
+    "troll_warlord": "Safe Lane",
+    "naga_siren": "Safe Lane",
+    "chaos_knight": "Safe Lane",
+    "skeleton_king": "Safe Lane",
+    "lina": "Mid Lane",
+    "queenofpain": "Mid Lane",
+    "zuus": "Mid Lane",
+    "death_prophet": "Mid Lane",
+    "templar_assassin": "Mid Lane",
+    "leshrac": "Mid Lane",
+    "arc_warden": "Mid Lane",
+    "dark_seer": "Off Lane",
+    "beastmaster": "Off Lane",
+    "abyssal_underlord": "Off Lane",
+    "legion_commander": "Off Lane",
+    "night_stalker": "Off Lane",
+    "doom_bringer": "Off Lane",
+    "shredder": "Off Lane",
+    "brewmaster": "Off Lane",
+    "dawnbreaker": "Off Lane",
+    "primal_beast": "Off Lane",
+    "slardar": "Off Lane",
+    "enigma": "Off Lane",
+    "dazzle": "Support",
+    "shadow_shaman": "Support",
+    "warlock": "Support",
+    "oracle": "Support",
+    "disruptor": "Support",
+    "jakiro": "Support",
+    "ancient_apparition": "Support",
+    "bane": "Support",
+    "wisp": "Support",
+    "keeper_of_the_light": "Support",
+    "grimstroke": "Support",
+    "winter_wyvern": "Support",
+    "shadow_demon": "Support",
+    "skywrath_mage": "Support",
+    "lich": "Support",
+    "abaddon": "Support",
+    "snapfire": "Support",
+    "nyx_assassin": "Roam/Support",
+    "spirit_breaker": "Roam/Support",
+    "mirana": "Roam/Support",
+    "rattletrap": "Roam/Support",
+    "tusk": "Roam/Support",
+    "bounty_hunter": "Roam/Support",
+    "sand_king": "Roam/Support",
 }
 
-# На что смотреть игроку на этом герое. Используется в панели мета-гайдов.
-HERO_FOCUS_BY_ROLE = {
-    "Mid Lane": "Контроль рун и первый активный тайминг после 6-8 минуты",
-    "Safe Lane": "Фарм-паттерн и ключевой слот до драк",
-    "Off Lane": "Давление на линии, после первого предмета - инициация",
-    "Support": "Вижен и размены, тело не отдавать до кор-тайминга",
-    "Roam/Support": "Смоки и ганги, конверсия killa в объект",
+# Руководство по роли для панели гайдов. Советы намеренно ролевые, а не
+# заточенные под конкретного героя: придумывать пер-геройские билды на 120+
+# героев значило бы выдавать домыслы за факты.
+HERO_GUIDE_BY_ROLE = {
+    "Mid Lane": {
+        "plan": "Контролируй руны и создавай темп после 6-8 минуты",
+        "early": "Держи волну ближе к своей вышке при плохом матчапе, забирай обе руны",
+        "items": "Bottle -> предмет на мобильность -> первый боевой слот",
+        "mistake": "Уход в фарм после 10 минуты: мид без давления бесполезен команде",
+    },
+    "Safe Lane": {
+        "plan": "Не дерись без ключевого слота, играй от фарм-паттерна",
+        "early": "Линия -> ближайший кемп -> линия; не теряй волны ради чужих драк",
+        "items": "Ускорение фарма -> первый боевой слот -> отмена контроля",
+        "mistake": "Драки на чужих таймингах вместо своего ключевого предмета",
+    },
+    "Off Lane": {
+        "plan": "Ломай линию давлением, после первого предмета играй на инициацию",
+        "early": "Разменивай ХП, отжимай кемпы врага, тяни за собой саппорта",
+        "items": "Живучесть -> инициация -> аура на команду",
+        "mistake": "Соло-дайвы без команды: инициация без поддержки просто отдаёт темп",
+    },
+    "Support": {
+        "plan": "Вижен и размены, тело не отдавать до кор-тайминга",
+        "early": "Ставь варды до спавна рун, стакай кемпы своему кору",
+        "items": "Расходники и вижен -> спасение кора -> усиление на драки",
+        "mistake": "Экономия на вардах: карта без вижена стоит команде драк, а не золота",
+    },
+    "Roam/Support": {
+        "plan": "Делай спейс смоками и гангами, конвертируй килл в объект",
+        "early": "Ищи размены на чужой линии, но не пропадай с карты надолго",
+        "items": "Мобильность -> контроль -> живучесть под инициацию",
+        "mistake": "Ганги без конверсии: килл без вышки или Рошана не даёт ничего",
+    },
 }
-HERO_FOCUS_DEFAULT = "Узкий пул и конверсия выигранных драк в объекты"
+HERO_GUIDE_DEFAULT = {
+    "plan": "Держи узкий пул и конвертируй выигранные драки в объекты",
+    "early": "Первые 10 минут проще: линия, тайминг первого слота, потом драка",
+    "items": "Сначала слот под свою задачу, потом реакция на драфт врага",
+    "mistake": "Расширение пула во время просадки: это удлиняет лузстрик",
+}
 
 
 def snapshot_has_real_data(snapshot):

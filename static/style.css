@@ -895,16 +895,27 @@ body {
     border-radius: inherit;
 }
 
+/* Все колонки в фирменном красном градиенте. Оттенок отличает хороший винрейт
+   от плохого, но семейство цвета едино, чтобы панель читалась как одно целое. */
 .stats-fill.good {
-    background: linear-gradient(90deg, #1db954, #22d164);
+    background: linear-gradient(90deg, #7a1020, #d8263a 60%, #ff6a5a);
 }
 
 .stats-fill.bad {
-    background: linear-gradient(90deg, #ff3333, #d8263a);
+    background: linear-gradient(90deg, #4a0d16, #a11d2c 60%, #ff3333);
 }
 
 .stats-fill.warm {
-    background: linear-gradient(90deg, #d2bd2a, #f0dd5a);
+    background: linear-gradient(90deg, #6d1220, #e03146 65%, #ff8a6a);
+}
+
+.stats-track,
+.stats-track.warm {
+    background: #241a1c;
+}
+
+.stats-value.warm {
+    color: #ff8a6a;
 }
 
 .activity-title-row {
@@ -1017,18 +1028,25 @@ body {
 .activity-cell.level-3 { background-color: rgba(255, 51, 51, 0.8); } 
 .activity-cell.level-4 { background-color: rgba(255, 51, 51, 1); }
 
+/* Размер ячейки задан один раз: сетка, подписи месяцев и сами ячейки обязаны
+   совпадать по шагу, иначе подписи разъезжаются с колонками. */
+.activity-heatmap-container {
+    --cell: 11px;
+    --cell-gap: 3px;
+}
+
 .activity-grid {
     --weeks: 53;
     display: grid;
-    grid-template-columns: repeat(var(--weeks), 7px);
-    grid-template-rows: repeat(7, 7px);
-    gap: 2px;
+    grid-template-columns: repeat(var(--weeks), var(--cell));
+    grid-template-rows: repeat(7, var(--cell));
+    gap: var(--cell-gap);
     width: max-content;
 }
 
 .activity-cell {
-    width: 7px;
-    height: 7px;
+    width: var(--cell);
+    height: var(--cell);
     border-radius: 2px;
     background: #171c20;
     border: 1px solid rgba(255, 255, 255, 0.03);
@@ -1058,9 +1076,16 @@ body {
     --weeks: 53;
     margin-top: 8px;
     display: grid;
-    grid-template-columns: repeat(var(--weeks), 7px);
-    gap: 2px;
+    grid-template-columns: repeat(var(--weeks), var(--cell));
+    gap: var(--cell-gap);
     width: max-content;
+    /* Подпись месяца шире своей колонки и не должна её распирать. */
+    font-size: 11px;
+    white-space: nowrap;
+}
+
+.activity-months > span {
+    overflow: visible;
 }
 
 .activity-month-label {
@@ -1243,172 +1268,129 @@ body {
     gap: 8px;
 }
 
-.meta-guide-row {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) minmax(155px, 0.8fr);
-    gap: 9px;
-    align-items: center;
-    padding: 8px;
-    border-radius: 9px;
+.guide-card {
+    border-radius: 10px;
     background: rgba(14, 18, 22, 0.8);
     border: 1px solid rgba(255, 255, 255, 0.08);
-    transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
-}
-
-.meta-guide-row.is-active {
-    background: rgba(22, 29, 36, 0.95);
-    border-color: rgba(255, 255, 255, 0.2);
-    transform: translateX(2px);
-}
-
-/* Подсказка по герою раскрывается только на наведении: в свёрнутом виде строка
-   остаётся такой же компактной, как была. */
-.meta-guide-focus {
-    grid-column: 1 / -1;
-    margin: 0;
-    font-size: 11.5px;
-    line-height: 1.35;
-    color: var(--text-dim);
-    max-height: 0;
-    opacity: 0;
     overflow: hidden;
-    transition: max-height 0.22s ease, opacity 0.22s ease, padding-top 0.22s ease;
+    transition: border-color 0.18s ease, background 0.18s ease;
 }
 
-.meta-guide-row.is-active .meta-guide-focus {
-    max-height: 48px;
-    opacity: 1;
-    padding-top: 6px;
+.guide-card.is-open {
+    background: rgba(24, 16, 18, 0.95);
+    border-color: rgba(216, 38, 58, 0.45);
 }
 
-.meta-guide-bars {
+.guide-head {
     display: grid;
-    gap: 4px;
+    grid-template-columns: 22px 46px minmax(0, 1fr) 18px;
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 9px 10px;
+    background: none;
+    border: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    font: inherit;
 }
 
-.meta-guide-wr.high {
-    color: #1ce17c;
+.guide-head:hover {
+    background: rgba(255, 255, 255, 0.04);
 }
 
-.meta-guide-wr.mid {
-    color: #f1cc43;
-}
-
-.meta-guide-wr.low {
-    color: #ff664d;
-}
-
-.meta-guide-rank {
+.guide-rank {
+    display: grid;
+    place-items: center;
     width: 22px;
     height: 22px;
     border-radius: 999px;
-    display: grid;
-    place-items: center;
     font-size: 11px;
-    font-weight: 800;
-    color: #ffc4c4;
-    background: rgba(255, 51, 51, 0.2);
-    border: 1px solid rgba(255, 51, 51, 0.35);
+    font-weight: 700;
+    color: #ffb3a8;
+    background: rgba(216, 38, 58, 0.22);
+    border: 1px solid rgba(216, 38, 58, 0.5);
 }
 
-.meta-guide-main {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.meta-guide-hero {
-    width: 58px;
-    height: 34px;
-    border-radius: 6px;
+.guide-hero {
+    width: 46px;
+    height: 26px;
+    border-radius: 5px;
     object-fit: cover;
-    border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.meta-guide-text {
-    min-width: 0;
+.guide-title {
     display: grid;
     gap: 2px;
+    min-width: 0;
 }
 
-.meta-guide-text strong {
-    font-size: 13px;
-    line-height: 1.2;
+.guide-title strong {
+    font-size: 13.5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-.meta-guide-text span {
-    font-size: 12px;
-    color: #a8b3be;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+.guide-role {
+    font-size: 11px;
+    color: var(--text-dim);
 }
 
-.meta-guide-stats {
+.guide-chevron {
+    font-size: 15px;
+    color: var(--text-dim);
+    text-align: center;
+}
+
+/* Тело раскрывается только у выбранного героя. Панель узкая: пять развёрнутых
+   руководств сразу превратили бы её в сплошную простыню текста. */
+.guide-body {
     display: grid;
-    gap: 5px;
-}
-
-.meta-guide-numbers {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    color: #dde3ea;
-    font-size: 12px;
-}
-
-.meta-guide-numbers span {
-    white-space: nowrap;
-}
-
-.meta-guide-track {
-    height: 8px;
-    border-radius: 999px;
-    background: #232a31;
+    gap: 6px;
+    padding: 0 10px;
+    max-height: 0;
+    opacity: 0;
     overflow: hidden;
+    transition: max-height 0.25s ease, opacity 0.25s ease, padding 0.25s ease;
 }
 
-.meta-guide-fill {
-    height: 100%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #ff4a4a, #ff8b8b);
-    /* Рост от нуля через scaleX, а не через width: анимация запускается самим
-       появлением элемента и не зависит от JS-таймеров. */
-    /* Переход, а не keyframes-анимация появления: на первый кадр он не влияет,
-       поэтому полоса всегда сразу нарисована на свою ширину. Анимация "росла бы
-       из нуля", но если её выполнение приостановлено, полосы залипают пустыми.
-       При смене профиля колонки плавно переезжают на новые значения. */
-    transition: width 0.45s cubic-bezier(0.22, 0.61, 0.36, 1), background 0.18s ease;
+.guide-card.is-open .guide-body {
+    max-height: 320px;
+    opacity: 1;
+    padding: 0 10px 10px;
 }
 
-.meta-guide-fill.games {
-    background: linear-gradient(90deg, #3f6fd8, #7aa2f7);
+.guide-line {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-main);
 }
 
-.meta-guide-fill.wr.high {
-    background: linear-gradient(90deg, #12a55c, #1ce17c);
+.guide-line.warn {
+    color: #ffb3a8;
 }
 
-.meta-guide-fill.wr.mid {
-    background: linear-gradient(90deg, #b8912a, #f1cc43);
+.guide-label {
+    display: inline-block;
+    min-width: 58px;
+    margin-right: 6px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-dim);
 }
 
-.meta-guide-fill.wr.low {
-    background: linear-gradient(90deg, #c23c28, #ff664d);
+.guide-line.warn .guide-label {
+    color: #d8263a;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .meta-guide-row,
-    .meta-guide-focus {
-        transition: none;
-    }
-
-    .meta-guide-fill {
+    .guide-card,
+    .guide-body {
         transition: none;
     }
 }
@@ -1596,17 +1578,12 @@ body {
         min-height: 460px;
     }
 
-    .meta-guide-row {
-        grid-template-columns: minmax(0, 1fr);
+    .guide-head {
+        grid-template-columns: 22px 46px minmax(0, 1fr) 18px;
     }
 
-    .meta-guide-numbers {
-        justify-content: flex-start;
-        gap: 12px;
-    }
-
-    .meta-guide-rank {
-        display: none;
+    .guide-label {
+        min-width: 52px;
     }
 }
 

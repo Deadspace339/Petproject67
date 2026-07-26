@@ -183,7 +183,7 @@ function TrendsPanel({ stats, selectedWindow, onWindowChange, hasWindow100 }) {
                             {heroRing.slice(0, 12).map((hero, index) => {
                                 const angle = (360 / Math.max(heroRing.length, 1)) * index;
                                 const pos = polarToCartesian(center, center, iconRadius, angle);
-                                const heroLabel = (hero || "unknown").replace(/_/g, " ");
+                                const heroLabel = window.prettyHeroName(hero);
 
                                 return (
                                     <img

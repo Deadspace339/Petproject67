@@ -18,7 +18,7 @@
                     </div>
 
                     {heroList.map((hero) => {
-                        const heroLabel = (hero.hero_name || "unknown").replace(/_/g, " ");
+                        const heroLabel = window.prettyHeroName(hero.hero_name);
                         const gamesWidth = Math.max(8, ((hero.games || 0) / maxGames) * 100);
 
                         return (
