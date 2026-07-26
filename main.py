@@ -1056,10 +1056,11 @@ STRATZ_GAME_MODE_IDS = {
     "ABILITY_DRAFT": 18,
     "EVENT": 19,
     "ALL_RANDOM_DEATH_MATCH": 20,
-    "MID_1VS1": 21,
-    "ALL_DRAFT": 22,
+    "SOLO_MID": 21,
+    "ALL_PICK_RANKED": 22,
     "TURBO": 23,
     "MUTATION": 24,
+    "UNKNOWN": 0,
 }
 
 
@@ -1310,10 +1311,20 @@ async def ensure_stratz_constants(client):
                 }
 
             if parsed_items:
-                item_map = parsed_items
                 break
 
+        # STRATZ's item constants are incomplete: several neutral items (Hydra's
+        # Breath, Conjurer's Catalyst, ...) are missing from them outright. Keeping
+        # only the first source that answered left those slots rendering as
+        # "Item 1858" with no icon, so fill the gaps from the bundled copy - it is
+        # on disk, so this costs no extra request.
+        for local_item_id, local_payload in load_local_item_map().items():
+            parsed_items.setdefault(local_item_id, local_payload)
+
+        item_map = parsed_items
+
     if not item_map:
+        # Neither STRATZ nor the bundled file produced anything usable.
         items_response = await fetch_json(client, f"{OPEN_DOTA_API}/constants/items", {}, label="items_fallback", max_retries=1)
         if isinstance(items_response, dict):
             parsed_items = {}
@@ -1330,9 +1341,6 @@ async def ensure_stratz_constants(client):
                 }
             if parsed_items:
                 item_map = parsed_items
-
-    if not item_map:
-        item_map = load_local_item_map()
 
 
 async def fetch_stratz_player_payload(client, player_id):
@@ -1362,7 +1370,11 @@ async def fetch_stratz_player_payload(client, player_id):
             winCount
           }
         }
-        recentMatches: matches(request: { take: $take, playerList: SINGLE, isParsed: true }) {
+        # No isParsed filter: it keeps only replay-parsed games, which quietly drops
+        # most turbo matches from the sample and skews every window stat with it.
+        # Lane role (position) is missing on unparsed games, and that degrades
+        # gracefully - a skewed match list does not.
+        recentMatches: matches(request: { take: $take, playerList: SINGLE }) {
           id
           startDateTime
           endDateTime
